@@ -7,7 +7,6 @@ without changing downstream logic. All thresholds come from config.yaml.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -16,6 +15,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import requests
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -357,6 +357,20 @@ class DataFetcher:
         self.windows: List[int] = config.get("windows", [30, 90, 180])
         self.ohlcv_limit = max(self.windows) + 5  # + buffer for returns
 
+    @staticmethod
+    def _cache_filename(symbol: str, interval: str) -> str:
+        """Single source of truth for cache filename. Symbol may contain '/'."""
+        safe = symbol.replace("/", "_")
+        return f"{safe}_{interval}.csv"
+
+    @staticmethod
+    def _parse_symbol_from_cache(cache_path: Path) -> str:
+        """Derive symbol from cache filename. E.g. ETH_USDT_1d.csv -> ETH, BTC_USDT_1d.csv -> BTC."""
+        stem = cache_path.stem  # e.g. ETH_USDT_1d
+        # Symbol is first part before '_' (handles ETH_USDT_1d -> ETH)
+        # For symbols like BTC, ETH, etc.
+        return stem.split("_")[0].upper()
+
     # -- Universe ------------------------------------------------------------
 
     def get_universe(self) -> List[Dict]:
@@ -433,7 +447,7 @@ class DataFetcher:
             logger.error("CRITICAL: BTC OHLCV is empty — pipeline cannot proceed without BTC data")
 
         alt_map: Dict[str, pd.DataFrame] = {}
-        for coin in universe:
+        for coin in tqdm(universe, desc="Fetching alt OHLCV", unit="coin"):
             sym = (coin.get("symbol") or "").upper()
             cg_id = coin.get("id") or sym.lower()
             binance_symbol = f"{sym}/{self.vs_currency}"
@@ -469,14 +483,13 @@ class DataFetcher:
         if not cache_dir.exists():
             logger.warning("Cache dir %s does not exist — no cached data", cache_dir)
             return None, {}
-        btc_path = cache_dir / f"BTC_{self.vs_currency}_{self.interval}.csv"
-        # Binance cache uses symbol with slash replaced
-        btc_path_alt = cache_dir / f"BTC_{self.vs_currency}_{self.interval}.csv".replace("/", "_")
-        # Try both naming conventions
-        candidates = [cache_dir / f"BTC_{self.vs_currency}_{self.interval}.csv",
-                      cache_dir / f"BTC_{self.vs_currency}_{self.interval}.csv".replace("/", "_"),
-                      cache_dir / f"BTC_USDT_{self.interval}.csv",
-                      cache_dir / f"BTC_USDT_1d.csv"]
+        # Use single source of truth for BTC cache filename
+        btc_cache_name = self._cache_filename(f"BTC/{self.vs_currency}", self.interval)
+        candidates = [
+            cache_dir / btc_cache_name,
+            cache_dir / f"BTC_USDT_{self.interval}.csv",
+            cache_dir / "BTC_USDT_1d.csv",
+        ]
         btc_df: Optional[pd.DataFrame] = None
         for p in candidates:
             if p.exists():
@@ -504,8 +517,7 @@ class DataFetcher:
                 continue
             try:
                 df = pd.read_csv(csv_path, parse_dates=["timestamp"])
-                # Derive symbol from filename: e.g. ETH_USDT_1d -> ETH
-                sym = name.split("_")[0].upper()
+                sym = self._parse_symbol_from_cache(csv_path)
                 alt_map[sym] = df
             except Exception as exc:
                 logger.warning("Failed to read cached %s: %s", csv_path, exc)
