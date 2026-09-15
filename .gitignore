@@ -1,31 +1,36 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
-.vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
-#Cache folder
-.cache
-#data folder
-/data
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
 
-#python cache
-__pycache__
-.pytest_cache
+# Data cache (raw OHLCV) — kept locally, not committed (large, regenerable)
+# Uncomment to track cache: remove the line below
+/data/*.csv
+!data/.gitkeep
+
+# Output — keep CSV and PNG (small, useful for review)
+# To ignore outputs, uncomment:
+# /output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+# data output
+data/
+output/
