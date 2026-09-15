@@ -1,10 +1,10 @@
-pandas>=2.0
-numpy>=1.24
-scipy>=1.10
-statsmodels>=0.14
-ccxt>=4.2
-requests>=2.31
-pyyaml>=6.0
-matplotlib>=3.7
-tqdm>=4.66
-pytest>=7.4
+# Runtime dependencies only — pinned with upper bounds
+pandas>=2.0,<3.0
+numpy>=1.24,<2.0
+scipy>=1.10,<2.0
+statsmodels>=0.14,<1.0
+ccxt>=4.2,<5.0
+requests>=2.31,<3.0
+pyyaml>=6.0,<7.0
+matplotlib>=3.7,<4.0
+tqdm>=4.66,<5.0
