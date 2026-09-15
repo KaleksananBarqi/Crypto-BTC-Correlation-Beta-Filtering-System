@@ -9,14 +9,17 @@ venv/
 dist/
 build/
 
-# Data cache (raw OHLCV) — kept locally, not committed (large, regenerable)
-# Uncomment to track cache: remove the line below
+# Data cache (raw OHLCV) — large, regenerable, keep .gitkeep
 /data/*.csv
-!data/.gitkeep
+!/data/.gitkeep
 
-# Output — keep CSV and PNG (small, useful for review)
-# To ignore outputs, uncomment:
-# /output/
+# Output — keep example outputs for review, ignore run artifacts
+/output/*.log
+/output/run_metadata.json
+# Keep CSV and PNG examples (small, useful for review)
+!/output/.gitkeep
+!/output/classified_coins.csv
+!/output/scatter_beta_corr.png
 
 # OS
 .DS_Store
@@ -31,6 +34,3 @@ Thumbs.db
 # Env
 .env
 .env.local
-# data output
-data/
-output/
