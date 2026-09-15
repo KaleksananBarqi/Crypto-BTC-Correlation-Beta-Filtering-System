@@ -6,8 +6,6 @@ This module validates the contract and rejects silent fallbacks.
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 REQUIRED_THRESHOLD_KEYS = [
     "corr_threshold_high",
     "corr_threshold_low",
@@ -19,7 +17,7 @@ REQUIRED_THRESHOLD_KEYS = [
 REQUIRED_TOP_LEVEL_KEYS = ["thresholds", "windows"]
 
 
-def validate_config(cfg: Dict) -> Dict:
+def validate_config(cfg: dict) -> dict:
     """Validate config.yaml dict. Raises ValueError on contract violation.
 
     Checks:
@@ -73,7 +71,7 @@ def validate_config(cfg: Dict) -> Dict:
     return cfg
 
 
-def validate_ranges(cfg: Dict) -> None:
+def validate_ranges(cfg: dict) -> None:
     """Validate numeric ranges for thresholds. Raises ValueError if violated.
 
     Checks:

@@ -11,7 +11,6 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import requests
@@ -36,7 +35,7 @@ class DataSource(ABC):
         """Fetch OHLCV and return DataFrame with columns [timestamp, open, high, low, close, volume]."""
 
     @abstractmethod
-    def fetch_universe(self, top_n: int, vs_currency: str = "usd") -> List[Dict]:
+    def fetch_universe(self, top_n: int, vs_currency: str = "usd") -> list[dict]:
         """Return list of coin dicts with at least keys: symbol, id, market_cap, volume_24h."""
 
 
@@ -53,7 +52,7 @@ class BinanceDataSource(DataSource):
         rate_limit_ms: int = 200,
         timeout_ms: int = 15000,
         max_retries: int = 3,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
     ) -> None:
         """
         Initialise Binance data source.
@@ -122,7 +121,7 @@ class BinanceDataSource(DataSource):
                 except Exception as exc:
                     logger.warning("Failed to read cache %s: %s — refetching", cache_path, exc)
 
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 ex = self._get_exchange()
@@ -159,7 +158,7 @@ class BinanceDataSource(DataSource):
 
     # -- Universe (Binance doesn't have market-cap ranking; delegate to CoinGecko) --
 
-    def fetch_universe(self, top_n: int, vs_currency: str = "usd") -> List[Dict]:
+    def fetch_universe(self, top_n: int, vs_currency: str = "usd") -> list[dict]:
         """
         Binance has no market-cap ranking endpoint. This method raises and
         signals the caller to use CoinGecko fallback.
@@ -187,7 +186,7 @@ class CoinGeckoDataSource(DataSource):
         per_page: int = 250,
         timeout_ms: int = 15000,
         max_retries: int = 3,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
     ) -> None:
         self.vs_currency = vs_currency
         self.per_page = per_page
@@ -197,7 +196,7 @@ class CoinGeckoDataSource(DataSource):
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def fetch_universe(self, top_n: int, vs_currency: str = "usd") -> List[Dict]:
+    def fetch_universe(self, top_n: int, vs_currency: str = "usd") -> list[dict]:
         """
         Fetch top-N coins by market cap from CoinGecko.
 
@@ -217,7 +216,7 @@ class CoinGeckoDataSource(DataSource):
             "sparkline": "false",
         }
         # Paginate if top_n > per_page
-        results: List[Dict] = []
+        results: list[dict] = []
         pages = (top_n + self.per_page - 1) // self.per_page
         for page in range(1, pages + 1):
             params["page"] = page
@@ -320,7 +319,7 @@ class DataFetcher:
         btc_df, alt_map = fetcher.fetch_all_ohlcv(universe)
     """
 
-    def __init__(self, config: Dict) -> None:
+    def __init__(self, config: dict) -> None:
         """
         Args:
             config: parsed config.yaml dict.
@@ -354,7 +353,7 @@ class DataFetcher:
         self.min_volume = uni_cfg.get("liquidity", {}).get("min_24h_volume_usd", 1_000_000)
         self.min_data_points = uni_cfg.get("min_data_points", 30)
         # windows determine how much history we need
-        self.windows: List[int] = config.get("windows", [30, 90, 180])
+        self.windows: list[int] = config.get("windows", [30, 90, 180])
         self.ohlcv_limit = max(self.windows) + 5  # + buffer for returns
 
     @staticmethod
@@ -373,7 +372,7 @@ class DataFetcher:
 
     # -- Universe ------------------------------------------------------------
 
-    def get_universe(self) -> List[Dict]:
+    def get_universe(self) -> list[dict]:
         """
         Fetch and filter universe.
 
@@ -392,7 +391,7 @@ class DataFetcher:
             logger.error("Universe fetch returned 0 coins — API failure or rate limit. No silent fallback.")
             return []
 
-        filtered: List[Dict] = []
+        filtered: list[dict] = []
         for coin in raw:
             sym = (coin.get("symbol") or "").upper()
             if sym in self.exclude_symbols:
@@ -421,8 +420,8 @@ class DataFetcher:
 
     def fetch_all_ohlcv(
         self,
-        universe: List[Dict],
-    ) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
+        universe: list[dict],
+    ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
         """
         Fetch BTC OHLCV + each alt's OHLCV.
 
@@ -446,7 +445,7 @@ class DataFetcher:
         if btc_df.empty:
             logger.error("CRITICAL: BTC OHLCV is empty — pipeline cannot proceed without BTC data")
 
-        alt_map: Dict[str, pd.DataFrame] = {}
+        alt_map: dict[str, pd.DataFrame] = {}
         for coin in tqdm(universe, desc="Fetching alt OHLCV", unit="coin"):
             sym = (coin.get("symbol") or "").upper()
             cg_id = coin.get("id") or sym.lower()
@@ -472,7 +471,7 @@ class DataFetcher:
         logger.info("Fetched OHLCV: BTC %d rows, %d alts", len(btc_df), len(alt_map))
         return btc_df, alt_map
 
-    def load_cached_ohlcv(self) -> Tuple[Optional[pd.DataFrame], Dict[str, pd.DataFrame]]:
+    def load_cached_ohlcv(self) -> tuple[pd.DataFrame | None, dict[str, pd.DataFrame]]:
         """
         Load cached OHLCV from cache_dir without hitting APIs.
 
@@ -490,7 +489,7 @@ class DataFetcher:
             cache_dir / f"BTC_USDT_{self.interval}.csv",
             cache_dir / "BTC_USDT_1d.csv",
         ]
-        btc_df: Optional[pd.DataFrame] = None
+        btc_df: pd.DataFrame | None = None
         for p in candidates:
             if p.exists():
                 try:
@@ -509,7 +508,7 @@ class DataFetcher:
                 except Exception:
                     continue
 
-        alt_map: Dict[str, pd.DataFrame] = {}
+        alt_map: dict[str, pd.DataFrame] = {}
         for csv_path in cache_dir.glob("*.csv"):
             name = csv_path.stem
             # Skip BTC files already handled

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -28,7 +27,7 @@ def compute_metrics(
     btc_returns: pd.Series,
     alt_returns: pd.Series,
     robust: bool = False,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """
     Compute r, beta, R², p-value for aligned log-return series.
 
@@ -145,10 +144,10 @@ def compute_metrics(
 def compute_metrics_for_windows(
     btc_series: pd.Series,
     alt_series: pd.Series,
-    windows: List[int],
+    windows: list[int],
     robust: bool = False,
     min_data_points: int = 30,
-) -> Dict[int, Dict[str, object]]:
+) -> dict[int, dict[str, object]]:
     """
     Compute metrics for each window using the MOST RECENT window (no look-ahead).
 
@@ -170,7 +169,7 @@ def compute_metrics_for_windows(
     No look-ahead bias:
         Each window only uses data up to time t (the end of the series). No future data.
     """
-    result: Dict[int, Dict[str, object]] = {}
+    result: dict[int, dict[str, object]] = {}
     total_n = len(btc_series)
     for w in windows:
         if total_n < w:
@@ -189,7 +188,7 @@ def compute_metrics_for_windows(
             )
         metrics = compute_metrics(btc_w, alt_w, robust=robust)
         result[w] = metrics
-        logger.debug("Window %d: r=%.3f beta=%.3f R²=%.3f p=%.3g n=%d", w, metrics["r"], metrics["beta"], metrics["r_squared"], metrics["p_value"], int(metrics["n"]))
+        logger.debug("Window %d: r=%.3f beta=%.3f R²=%.3f p=%.3g n=%d", w, metrics["r"], metrics["beta"], metrics["r_squared"], metrics["p_value"], int(float(metrics["n"])))  # type: ignore[arg-type]
     return result
 
 
@@ -222,9 +221,6 @@ def compute_rolling_metrics(
         logger.warning("compute_rolling_metrics: len %d < window %d — returning empty", len(btc_series), window)
         return pd.DataFrame(columns=["r", "beta", "r_squared", "p_value"])
 
-    # Preserve timestamp if series has it
-    has_timestamp = isinstance(btc_series.index, pd.DatetimeIndex) or "timestamp" in str(btc_series.index.name or "")
-
     rows = []
     for end in range(window, len(btc_series) + 1):
         start = end - window
@@ -240,13 +236,13 @@ def compute_rolling_metrics(
 
 def compute_all_coins_metrics(
     btc_returns: pd.Series,
-    alt_returns_map: Dict[str, Tuple[pd.Series, pd.Series]],
-    windows: List[int],
+    alt_returns_map: dict[str, tuple[pd.Series, pd.Series]],
+    windows: list[int],
     robust: bool = False,
     min_data_points: int = 30,
     max_workers: int = 8,
     executor: str = "thread",
-) -> Dict[str, Dict[int, Dict[str, object]]]:
+) -> dict[str, dict[int, dict[str, object]]]:
     """
     Compute metrics for all coins in parallel.
 
@@ -267,9 +263,9 @@ def compute_all_coins_metrics(
     """
     # alt_returns_map is Dict[str, Tuple[pd.Series, pd.Series]] where each tuple is (btc_series, alt_series)
     # For backwards compat, also support Dict[str, pd.Series] where btc_series is passed separately
-    result: Dict[str, Dict[int, Dict[str, object]]] = {}
+    result: dict[str, dict[int, dict[str, object]]] = {}
 
-    def _task(symbol: str, btc_s: pd.Series, alt_s: pd.Series) -> Tuple[str, Dict[int, Dict[str, object]]]:
+    def _task(symbol: str, btc_s: pd.Series, alt_s: pd.Series) -> tuple[str, dict[int, dict[str, object]]]:
         metrics_by_window = compute_metrics_for_windows(btc_s, alt_s, windows, robust=robust, min_data_points=min_data_points)
         return symbol, metrics_by_window
 
@@ -311,13 +307,13 @@ def compute_all_coins_metrics(
 
 
 def compute_all_coins_metrics_v2(
-    aligned_returns_map: Dict[str, Tuple[pd.Series, pd.Series]],
-    windows: List[int],
+    aligned_returns_map: dict[str, tuple[pd.Series, pd.Series]],
+    windows: list[int],
     robust: bool = False,
     min_data_points: int = 30,
     max_workers: int = 8,
     executor: str = "thread",
-) -> Dict[str, Dict[int, Dict[str, object]]]:
+) -> dict[str, dict[int, dict[str, object]]]:
     """
     New API without dummy btc_returns param (preferred).
 

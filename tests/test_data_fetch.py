@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pandas as pd
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-from src.data_fetch import DataFetcher, BinanceDataSource, CoinGeckoDataSource
+from src.data_fetch import DataFetcher
 
 
 @pytest.fixture
@@ -62,8 +63,8 @@ class TestOHLCVFallback:
         fetcher = DataFetcher(mock_config)
         empty = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
         btc_df = pd.DataFrame({"timestamp": pd.date_range("2024-01-01", periods=5, tz="UTC"), "open": [1]*5, "high": [1]*5, "low": [1]*5, "close": [1]*5, "volume": [1]*5})
-        with patch.object(fetcher.binance, "fetch_ohlcv", return_value=empty) as mock_binance:
-            with patch.object(fetcher.coingecko, "fetch_ohlcv", return_value=btc_df) as mock_cg:
+        with patch.object(fetcher.binance, "fetch_ohlcv", return_value=empty):
+            with patch.object(fetcher.coingecko, "fetch_ohlcv", return_value=btc_df):
                 universe = [{"id": "ethereum", "symbol": "ETH"}]
                 # Mock alt also
                 with patch.object(fetcher.binance, "fetch_ohlcv", side_effect=[empty, empty]):

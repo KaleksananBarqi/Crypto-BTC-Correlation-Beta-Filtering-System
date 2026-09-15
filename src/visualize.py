@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -30,10 +29,10 @@ LABELS = {
 
 def plot_beta_vs_correlation(
     df: pd.DataFrame,
-    config: Dict,
-    output_path: Optional[str] = None,
-    r_col: Optional[str] = None,
-    beta_col: Optional[str] = None,
+    config: dict,
+    output_path: str | None = None,
+    r_col: str | None = None,
+    beta_col: str | None = None,
 ) -> Path:
     """
     Create scatter plot: beta (x-axis) vs correlation (y-axis).
@@ -57,7 +56,7 @@ def plot_beta_vs_correlation(
     beta_min = thresholds.get("beta_min", 3.0)
     beta_max = thresholds.get("beta_max", 5.0)
 
-    windows: List[int] = config.get("windows", [30, 90, 180])
+    windows: list[int] = config.get("windows", [30, 90, 180])
     primary_window: int = config.get("primary_window", max(windows) if windows else 180)
     out_cfg = config.get("output", {})
     scatter_path = Path(output_path or out_cfg.get("scatter_path", "output/scatter_beta_corr.png"))
@@ -153,7 +152,7 @@ def plot_beta_vs_correlation(
         fontsize=6, color="#555", ha="left", va="bottom", wrap=True,
     )
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+    plt.tight_layout(rect=(0, 0.03, 1, 0.97))
     fig.savefig(scatter_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     logger.info("Scatter saved to %s (%d points)", scatter_path, len(df))

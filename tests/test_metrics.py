@@ -16,10 +16,21 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.classifier import CATEGORY_A, CATEGORY_B, CATEGORY_NEUTRAL, build_classification_table, check_stability, classify_single
+from src.classifier import (
+    CATEGORY_A,
+    CATEGORY_B,
+    CATEGORY_NEUTRAL,
+    build_classification_table,
+    check_stability,
+    classify_single,
+)
 from src.metrics import compute_metrics, compute_metrics_for_windows, compute_rolling_metrics
-from src.preprocessing import align_ohlcv, apply_outlier_handling, compute_log_returns, prepare_aligned_returns
-
+from src.preprocessing import (
+    align_ohlcv,
+    apply_outlier_handling,
+    compute_log_returns,
+    prepare_aligned_returns,
+)
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 

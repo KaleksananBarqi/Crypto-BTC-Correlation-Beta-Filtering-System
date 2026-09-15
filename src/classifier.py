@@ -14,7 +14,6 @@ Primary classification = most recent window (max(windows)), others as stability 
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -84,9 +83,9 @@ def classify_single(
 
 
 def classify_all_windows(
-    metrics_by_window: Dict[int, Dict[str, float]],
-    thresholds: Dict[str, float],
-) -> Dict[int, str]:
+    metrics_by_window: dict[int, dict[str, float]],
+    thresholds: dict[str, float],
+) -> dict[int, str]:
     """
     Classify each window's metrics.
 
@@ -101,7 +100,7 @@ def classify_all_windows(
     Units:
         Thresholds dimensionless; metrics as per classify_single.
     """
-    result: Dict[int, str] = {}
+    result: dict[int, str] = {}
     require_nonsig = bool(thresholds.get("category_b_require_nonsignificant", False))
     for w, m in metrics_by_window.items():
         cat = classify_single(
@@ -119,7 +118,7 @@ def classify_all_windows(
     return result
 
 
-def check_stability(categories_by_window: Dict[int, str]) -> Tuple[bool, str]:
+def check_stability(categories_by_window: dict[int, str]) -> tuple[bool, str]:
     """
     Check stability across windows.
 
@@ -146,8 +145,8 @@ def check_stability(categories_by_window: Dict[int, str]) -> Tuple[bool, str]:
 
 
 def build_classification_table(
-    all_metrics: Dict[str, Dict[int, Dict[str, float]]],
-    config: Dict,
+    all_metrics: dict[str, dict[int, dict[str, float]]],
+    config: dict,
 ) -> pd.DataFrame:
     """
     Build the final classification DataFrame for output CSV.
@@ -174,7 +173,7 @@ def build_classification_table(
     missing = [k for k in required_keys if k not in thresholds]
     if missing:
         raise ValueError(f"config thresholds missing required keys {missing} — no silent defaults allowed")
-    thresh: Dict[str, object] = {
+    thresh: dict[str, object] = {
         "corr_threshold_high": thresholds["corr_threshold_high"],
         "corr_threshold_low": thresholds["corr_threshold_low"],
         "beta_min": thresholds["beta_min"],
@@ -182,7 +181,7 @@ def build_classification_table(
         "alpha": thresholds["alpha"],
         "category_b_require_nonsignificant": bool(thresholds.get("category_b_require_nonsignificant", False)),
     }
-    windows: List[int] = config.get("windows", [30, 90, 180])
+    windows: list[int] = config.get("windows", [30, 90, 180])
     if not windows:
         raise ValueError("config 'windows' must be non-empty")
     primary_window: int = config.get("primary_window", max(windows) if windows else 180)
@@ -202,7 +201,7 @@ def build_classification_table(
         r_squared = primary_metrics.get("r_squared", float("nan"))
         p_value = primary_metrics.get("p_value", float("nan"))
 
-        row: Dict[str, object] = {"symbol": symbol}
+        row: dict[str, object] = {"symbol": symbol}
         for w in windows:
             m = metrics_by_window.get(w, {})
             row[f"r_{w}d"] = m.get("r", float("nan"))

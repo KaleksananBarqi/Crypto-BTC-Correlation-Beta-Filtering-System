@@ -7,7 +7,6 @@ All thresholds/options come from config.yaml — no hardcoding.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -20,7 +19,7 @@ def align_ohlcv(
     alt_df: pd.DataFrame,
     missing_policy: str = "drop",
     ffill_limit: int = 2,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Align BTC and alt OHLCV on timestamp (inner join on timestamp).
 
@@ -154,7 +153,7 @@ def compute_log_returns(
 def apply_outlier_handling(
     series: pd.Series,
     method: str = "none",
-    winsorize_limits: Optional[List[float]] = None,
+    winsorize_limits: list[float] | None = None,
 ) -> pd.Series:
     """
     Apply outlier handling to a return series.
@@ -192,8 +191,8 @@ def apply_outlier_handling(
 def prepare_aligned_returns(
     btc_df: pd.DataFrame,
     alt_df: pd.DataFrame,
-    config: Dict,
-) -> Tuple[pd.Series, pd.Series, pd.DataFrame]:
+    config: dict,
+) -> tuple[pd.Series, pd.Series, pd.DataFrame]:
     """
     Full preprocessing pipeline for one alt vs BTC.
 
@@ -218,7 +217,7 @@ def prepare_aligned_returns(
     missing_policy: str = prep_cfg.get("missing_data_policy", "drop")
     ffill_limit: int = prep_cfg.get("forward_fill_limit", 2)
     outlier_method: str = prep_cfg.get("outlier_handling", "none")
-    winsorize_limits: Optional[List[float]] = prep_cfg.get("winsorize_limits", [0.01, 0.01])
+    winsorize_limits: list[float] | None = prep_cfg.get("winsorize_limits", [0.01, 0.01])
 
     # 1. Align OHLCV
     btc_aligned, alt_aligned = align_ohlcv(btc_df, alt_df, missing_policy=missing_policy, ffill_limit=ffill_limit)
