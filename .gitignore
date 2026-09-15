@@ -21,3 +21,11 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+#Cache folder
+.cache
+#data folder
+/data
+
+#python cache
+__pycache__
+.pytest_cache

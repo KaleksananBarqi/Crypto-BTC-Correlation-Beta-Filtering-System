@@ -1,0 +1,72 @@
+# Crypto BTC-Correlation & Beta Filtering System — Configuration
+# ALL thresholds MUST be here; no hardcoding in logic.
+
+# ── Universe selection ──────────────────────────────────────────────
+universe:
+  top_n: 100                          # top N by market cap / volume
+  exclude_symbols:                    # stablecoins, wrapped BTC, BTC itself
+    - USDT
+    - USDC
+    - DAI
+    - FDUSD
+    - TUSD
+    - USDE
+    - USDP
+    - GUSD
+    - BUSD
+    - WBTC
+    - WETH
+    - STETH
+    - BTC
+    - BTCB
+  liquidity:
+    min_24h_volume_usd: 1000000        # exclude coins below this 24h volume
+  min_data_points: 30                 # n >= 30 per window
+
+# ── Data fetching ───────────────────────────────────────────────────
+data:
+  exchange: "binance"                 # ccxt exchange id
+  vs_currency: "USDT"                 # quote currency for OHLCV
+  interval: "1d"                      # daily candles
+  cache_dir: "data"                   # raw OHLCV cache
+  coingecko:
+    enabled: true
+    vs_currency: "usd"
+    per_page: 250
+    fallback_on_binance_failure: true
+  rate_limit_ms: 200                  # ms between ccxt calls
+  max_retries: 3
+  timeout_ms: 15000
+
+# ── Preprocessing ───────────────────────────────────────────────────
+preprocessing:
+  missing_data_policy: "drop"         # "drop" | "forward_fill"
+  forward_fill_limit: 2               # max consecutive NaNs to ffill (if policy == forward_fill)
+  log_returns: true                   # always true; log-return = ln(P_t / P_{t-1})
+  outlier_handling: "none"            # "none" | "winsorize" | "robust"
+  winsorize_limits: [0.01, 0.01]       # lower, upper quantiles to clip (if winsorize)
+  robust_regression: false            # if true, use Huber/RLM instead of OLS for beta (requires statsmodels)
+
+# ── Metrics windows ─────────────────────────────────────────────────
+windows: [30, 90, 180]                # rolling windows in days (daily interval)
+primary_window: 180                   # classification uses most recent window; others = stability context
+
+# ── Classification thresholds ───────────────────────────────────────
+thresholds:
+  corr_threshold_high: 0.7            # Category A: r > this
+  corr_threshold_low: 0.2             # Category B: |r| < this
+  beta_min: 3.0                       # Category A: beta in [BETA_MIN, BETA_MAX]
+  beta_max: 5.0
+  alpha: 0.05                         # significance level for p-value
+
+# ── Output ──────────────────────────────────────────────────────────
+output:
+  csv_path: "output/classified_coins.csv"
+  scatter_path: "output/scatter_beta_corr.png"
+  scatter_dpi: 150
+  scatter_figsize: [10, 7]
+
+# ── Logging ─────────────────────────────────────────────────────────
+logging:
+  level: "INFO"                       # DEBUG | INFO | WARNING | ERROR
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
