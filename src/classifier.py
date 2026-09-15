@@ -3,7 +3,7 @@ Classifier: categorization + stability check.
 
 Definitions (EXACT per spec, thresholds from config.yaml):
   Category A = (r > CORR_THRESHOLD_HIGH) AND (BETA_MIN ≤ β ≤ BETA_MAX) AND (p < ALPHA)
-  Category B = (|r| < CORR_THRESHOLD_LOW) AND (p ≥ ALPHA)
+  Category B = (|r| < CORR_THRESHOLD_LOW) [AND (p ≥ ALPHA) if category_b_require_nonsignificant=true]
   Else       = neutral/unclassified (still shown)
 
 Beta negative: NOT Category A (Category A requires positive 3.0-5.0x). Computed and shown as neutral.
@@ -36,6 +36,7 @@ def classify_single(
     beta_min: float,
     beta_max: float,
     alpha: float,
+    category_b_require_nonsignificant: bool = False,
 ) -> str:
     """
     Classify a single window's metrics.
@@ -49,6 +50,8 @@ def classify_single(
         beta_min: lower bound for Category A beta (e.g. 3.0).
         beta_max: upper bound for Category A beta (e.g. 5.0).
         alpha: significance level (e.g. 0.05).
+        category_b_require_nonsignificant: if True, Category B requires |r|<low AND p>=alpha;
+            if False (default), Category B only checks |r|<low (decoupled).
 
     Returns:
         Category string: "A_levered_btc" | "B_uncorrelated" | "neutral".
@@ -69,9 +72,13 @@ def classify_single(
     if (r > corr_threshold_high) and (beta_min <= beta <= beta_max) and (p_value < alpha):
         return CATEGORY_A
 
-    # Category B: uncorrelated (|r| < low) + not significant
-    if (abs(r) < corr_threshold_low) and (p_value >= alpha):
-        return CATEGORY_B
+    # Category B: uncorrelated (|r| < low) [+ not significant if flag true]
+    if abs(r) < corr_threshold_low:
+        if category_b_require_nonsignificant:
+            if p_value >= alpha:
+                return CATEGORY_B
+        else:
+            return CATEGORY_B
 
     return CATEGORY_NEUTRAL
 
@@ -85,7 +92,8 @@ def classify_all_windows(
 
     Args:
         metrics_by_window: Dict window -> metrics dict with keys r, beta, p_value.
-        thresholds: dict with keys corr_threshold_high, corr_threshold_low, beta_min, beta_max, alpha.
+        thresholds: dict with keys corr_threshold_high, corr_threshold_low, beta_min, beta_max, alpha,
+            and optionally category_b_require_nonsignificant (bool, default False).
 
     Returns:
         Dict window -> category string.
@@ -94,6 +102,7 @@ def classify_all_windows(
         Thresholds dimensionless; metrics as per classify_single.
     """
     result: Dict[int, str] = {}
+    require_nonsig = bool(thresholds.get("category_b_require_nonsignificant", False))
     for w, m in metrics_by_window.items():
         cat = classify_single(
             r=m.get("r", float("nan")),
@@ -104,6 +113,7 @@ def classify_all_windows(
             beta_min=thresholds["beta_min"],
             beta_max=thresholds["beta_max"],
             alpha=thresholds["alpha"],
+            category_b_require_nonsignificant=require_nonsig,
         )
         result[w] = cat
     return result
@@ -156,16 +166,25 @@ def build_classification_table(
         r in [-1,1], beta unbounded, r_squared in [0,1], p_value in [0,1],
         all derived from log-returns (dimensionless).
     """
-    thresholds = config.get("thresholds", {})
-    # Normalize threshold keys (support both naming conventions)
-    thresh = {
-        "corr_threshold_high": thresholds.get("corr_threshold_high", 0.7),
-        "corr_threshold_low": thresholds.get("corr_threshold_low", 0.2),
-        "beta_min": thresholds.get("beta_min", 3.0),
-        "beta_max": thresholds.get("beta_max", 5.0),
-        "alpha": thresholds.get("alpha", 0.05),
+    thresholds = config.get("thresholds")
+    if not isinstance(thresholds, dict):
+        raise ValueError("config missing 'thresholds' mapping — no silent defaults allowed")
+    # Strict contract: no silent .get defaults for required keys
+    required_keys = ["corr_threshold_high", "corr_threshold_low", "beta_min", "beta_max", "alpha"]
+    missing = [k for k in required_keys if k not in thresholds]
+    if missing:
+        raise ValueError(f"config thresholds missing required keys {missing} — no silent defaults allowed")
+    thresh: Dict[str, object] = {
+        "corr_threshold_high": thresholds["corr_threshold_high"],
+        "corr_threshold_low": thresholds["corr_threshold_low"],
+        "beta_min": thresholds["beta_min"],
+        "beta_max": thresholds["beta_max"],
+        "alpha": thresholds["alpha"],
+        "category_b_require_nonsignificant": bool(thresholds.get("category_b_require_nonsignificant", False)),
     }
     windows: List[int] = config.get("windows", [30, 90, 180])
+    if not windows:
+        raise ValueError("config 'windows' must be non-empty")
     primary_window: int = config.get("primary_window", max(windows) if windows else 180)
     if primary_window not in windows:
         logger.warning("primary_window %d not in windows %s — using max(windows) %d", primary_window, windows, max(windows))
@@ -174,7 +193,7 @@ def build_classification_table(
     rows = []
     for symbol, metrics_by_window in all_metrics.items():
         # Classify each window
-        cats_by_window = classify_all_windows(metrics_by_window, thresh)
+        cats_by_window = classify_all_windows(metrics_by_window, thresh)  # type: ignore[arg-type]
         primary_cat = cats_by_window.get(primary_window, CATEGORY_NEUTRAL)
         unstable, detail = check_stability(cats_by_window)
 

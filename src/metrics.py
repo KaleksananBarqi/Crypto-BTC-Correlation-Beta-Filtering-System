@@ -14,7 +14,7 @@ Thresholds are NEVER hardcoded — passed via config dict.
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -28,7 +28,7 @@ def compute_metrics(
     btc_returns: pd.Series,
     alt_returns: pd.Series,
     robust: bool = False,
-) -> Dict[str, float]:
+) -> Dict[str, object]:
     """
     Compute r, beta, R², p-value for aligned log-return series.
 
@@ -38,16 +38,18 @@ def compute_metrics(
         robust: if True, use Huber RLM for beta instead of OLS.
 
     Returns:
-        Dict with keys: r, beta, r_squared, p_value, n, var_btc, cov.
+        Dict with keys: r, beta, r_squared, r_squared_raw, regression_method, p_value, n, var_btc, cov.
 
     Units:
         Inputs are log-returns (dimensionless). Outputs: r in [-1,1], beta unbounded,
-        r_squared in [0,1], p_value in [0,1].
+        r_squared in [0,1], r_squared_raw unbounded (before clamp), p_value in [0,1].
 
     Notes:
         - Uses scipy.stats.pearsonr for r and p_value.
         - Uses statsmodels OLS (or RLM if robust) for beta and R².
         - Returns NaN for all metrics if n < 2 or var_btc == 0 (logged explicitly).
+        - regression_method is "rlm_huber" when robust succeeds, else "ols".
+        - r_squared_raw preserves diagnostic value before clamp; r_squared is clamped to [0,1].
     """
     # Align and drop NaN/inf explicitly (no silent fail)
     df = pd.DataFrame({"btc": btc_returns, "alt": alt_returns})
@@ -60,7 +62,7 @@ def compute_metrics(
     n = len(df)
     if n < 2:
         logger.warning("compute_metrics: n=%d < 2 — insufficient data, returning NaN", n)
-        return {"r": float("nan"), "beta": float("nan"), "r_squared": float("nan"), "p_value": float("nan"), "n": float(n), "var_btc": float("nan"), "cov": float("nan")}
+        return {"r": float("nan"), "beta": float("nan"), "r_squared": float("nan"), "r_squared_raw": float("nan"), "regression_method": "ols", "p_value": float("nan"), "n": float(n), "var_btc": float("nan"), "cov": float("nan")}
 
     btc = df["btc"].to_numpy(dtype=float)
     alt = df["alt"].to_numpy(dtype=float)
@@ -70,7 +72,7 @@ def compute_metrics(
 
     if var_btc == 0 or np.isnan(var_btc):
         logger.warning("compute_metrics: var_btc=%.6g — beta undefined (zero variance), returning NaN", var_btc)
-        return {"r": float("nan"), "beta": float("nan"), "r_squared": float("nan"), "p_value": float("nan"), "n": float(n), "var_btc": var_btc, "cov": cov}
+        return {"r": float("nan"), "beta": float("nan"), "r_squared": float("nan"), "r_squared_raw": float("nan"), "regression_method": "ols", "p_value": float("nan"), "n": float(n), "var_btc": var_btc, "cov": cov}
 
     # Pearson r and p-value
     try:
@@ -82,6 +84,8 @@ def compute_metrics(
     # Beta and R² via statsmodels
     beta: float = float("nan")
     r_squared: float = float("nan")
+    r_squared_raw: float = float("nan")
+    regression_method: str = "ols"
     try:
         import statsmodels.api as sm  # type: ignore
 
@@ -96,9 +100,10 @@ def compute_metrics(
                 y_pred = res.fittedvalues
                 ss_res = float(np.sum((alt - y_pred) ** 2))
                 ss_tot = float(np.sum((alt - np.mean(alt)) ** 2))
-                r_squared = float(1 - ss_res / ss_tot) if ss_tot != 0 else float("nan")
-                # Clamp R² to [0,1] for reporting (pseudo-R² can be negative)
-                r_squared = max(0.0, min(1.0, r_squared)) if not np.isnan(r_squared) else float("nan")
+                r_squared_raw = float(1 - ss_res / ss_tot) if ss_tot != 0 else float("nan")
+                # Clamp R² to [0,1] for reporting (pseudo-R² can be negative) — keep raw for diagnostics
+                r_squared = max(0.0, min(1.0, r_squared_raw)) if not np.isnan(r_squared_raw) else float("nan")
+                regression_method = "rlm_huber"
             except Exception as exc:  # noqa: BLE001
                 logger.warning("RLM failed, falling back to OLS: %s", exc)
                 robust = False  # fallback
@@ -107,7 +112,9 @@ def compute_metrics(
             model = sm.OLS(alt, X)
             res = model.fit()
             beta = float(res.params[1]) if len(res.params) > 1 else float("nan")
-            r_squared = float(res.rsquared) if hasattr(res, "rsquared") else float("nan")
+            r_squared_raw = float(res.rsquared) if hasattr(res, "rsquared") else float("nan")
+            r_squared = float(r_squared_raw)
+            regression_method = "ols"
 
         # Cross-check: beta should equal cov/var_btc (within tolerance) for OLS
         beta_cov = cov / var_btc if var_btc != 0 else float("nan")
@@ -119,12 +126,15 @@ def compute_metrics(
         raise
     except Exception as exc:  # noqa: BLE001
         logger.error("OLS/RLM failed: %s — returning NaN for beta/R²", exc)
-        beta, r_squared = float("nan"), float("nan")
+        beta, r_squared, r_squared_raw = float("nan"), float("nan"), float("nan")
+        regression_method = "ols"
 
     return {
         "r": float(r) if not np.isnan(r) else float("nan"),
         "beta": float(beta),
         "r_squared": float(r_squared),
+        "r_squared_raw": float(r_squared_raw),
+        "regression_method": regression_method,  # type: ignore[typeddict-item]
         "p_value": float(p_value) if not np.isnan(p_value) else float("nan"),
         "n": float(n),
         "var_btc": float(var_btc),
@@ -138,7 +148,7 @@ def compute_metrics_for_windows(
     windows: List[int],
     robust: bool = False,
     min_data_points: int = 30,
-) -> Dict[int, Dict[str, float]]:
+) -> Dict[int, Dict[str, object]]:
     """
     Compute metrics for each window using the MOST RECENT window (no look-ahead).
 
@@ -160,7 +170,7 @@ def compute_metrics_for_windows(
     No look-ahead bias:
         Each window only uses data up to time t (the end of the series). No future data.
     """
-    result: Dict[int, Dict[str, float]] = {}
+    result: Dict[int, Dict[str, object]] = {}
     total_n = len(btc_series)
     for w in windows:
         if total_n < w:
@@ -223,7 +233,7 @@ def compute_rolling_metrics(
         m = compute_metrics(btc_w, alt_w, robust=robust)
         # Use end timestamp if available
         ts = btc_series.index[end - 1] if hasattr(btc_series.index, "__getitem__") else end - 1
-        rows.append({"timestamp": ts, "r": m["r"], "beta": m["beta"], "r_squared": m["r_squared"], "p_value": m["p_value"], "n": m["n"]})
+        rows.append({"timestamp": ts, "r": m["r"], "beta": m["beta"], "r_squared": m["r_squared"], "r_squared_raw": m["r_squared_raw"], "regression_method": m["regression_method"], "p_value": m["p_value"], "n": m["n"]})
 
     return pd.DataFrame(rows)
 
@@ -235,18 +245,19 @@ def compute_all_coins_metrics(
     robust: bool = False,
     min_data_points: int = 30,
     max_workers: int = 8,
-) -> Dict[str, Dict[int, Dict[str, float]]]:
+    executor: str = "thread",
+) -> Dict[str, Dict[int, Dict[str, object]]]:
     """
     Compute metrics for all coins in parallel.
 
     Args:
-        btc_returns: not used directly — alt_returns_map already contains aligned series.
-                     Kept for API symmetry; if alt_returns_map values are (btc_series, alt_series) tuples, uses those.
+        btc_returns: deprecated — kept for backwards compat, ignored when alt_returns_map values are tuples.
         alt_returns_map: Dict symbol -> (btc_series, alt_series) aligned log-returns.
         windows: window sizes.
         robust: robust regression flag.
         min_data_points: minimum n per window.
-        max_workers: thread pool size.
+        max_workers: thread/process pool size.
+        executor: "thread" or "process".
 
     Returns:
         Dict symbol -> Dict window -> metrics.
@@ -256,9 +267,9 @@ def compute_all_coins_metrics(
     """
     # alt_returns_map is Dict[str, Tuple[pd.Series, pd.Series]] where each tuple is (btc_series, alt_series)
     # For backwards compat, also support Dict[str, pd.Series] where btc_series is passed separately
-    result: Dict[str, Dict[int, Dict[str, float]]] = {}
+    result: Dict[str, Dict[int, Dict[str, object]]] = {}
 
-    def _task(symbol: str, btc_s: pd.Series, alt_s: pd.Series) -> Tuple[str, Dict[int, Dict[str, float]]]:
+    def _task(symbol: str, btc_s: pd.Series, alt_s: pd.Series) -> Tuple[str, Dict[int, Dict[str, object]]]:
         metrics_by_window = compute_metrics_for_windows(btc_s, alt_s, windows, robust=robust, min_data_points=min_data_points)
         return symbol, metrics_by_window
 
@@ -276,9 +287,16 @@ def compute_all_coins_metrics(
         logger.warning("compute_all_coins_metrics: no coins to process")
         return result
 
-    # Parallel execution
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_sym = {executor.submit(_task, sym, btc_s, alt_s): sym for sym, btc_s, alt_s in tasks}
+    # Parallel execution — executor configurable
+    executor = executor.lower() if isinstance(executor, str) else "thread"
+    if executor not in ("thread", "process"):
+        logger.warning("Unknown executor '%s' — falling back to thread", executor)
+        executor = "thread"
+
+    ExecutorCls = ThreadPoolExecutor if executor == "thread" else ProcessPoolExecutor
+
+    with ExecutorCls(max_workers=max_workers) as exec_pool:
+        future_to_sym = {exec_pool.submit(_task, sym, btc_s, alt_s): sym for sym, btc_s, alt_s in tasks}
         for fut in as_completed(future_to_sym):
             sym = future_to_sym[fut]
             try:
@@ -286,7 +304,42 @@ def compute_all_coins_metrics(
                 result[symbol] = metrics_by_window
             except Exception as exc:  # noqa: BLE001
                 logger.error("Metrics failed for %s: %s — returning NaN metrics for all windows", sym, exc)
-                result[sym] = {w: {"r": float("nan"), "beta": float("nan"), "r_squared": float("nan"), "p_value": float("nan"), "n": 0, "var_btc": float("nan"), "cov": float("nan")} for w in windows}
+                result[sym] = {w: {"r": float("nan"), "beta": float("nan"), "r_squared": float("nan"), "r_squared_raw": float("nan"), "regression_method": "ols", "p_value": float("nan"), "n": 0, "var_btc": float("nan"), "cov": float("nan")} for w in windows}
 
-    logger.info("Computed metrics for %d coins across windows %s", len(result), windows)
+    logger.info("Computed metrics for %d coins across windows %s (executor=%s)", len(result), windows, executor)
     return result
+
+
+def compute_all_coins_metrics_v2(
+    aligned_returns_map: Dict[str, Tuple[pd.Series, pd.Series]],
+    windows: List[int],
+    robust: bool = False,
+    min_data_points: int = 30,
+    max_workers: int = 8,
+    executor: str = "thread",
+) -> Dict[str, Dict[int, Dict[str, object]]]:
+    """
+    New API without dummy btc_returns param (preferred).
+
+    Args:
+        aligned_returns_map: Dict symbol -> (btc_series, alt_series).
+        windows: window sizes.
+        robust: robust regression flag.
+        min_data_points: minimum n per window.
+        max_workers: pool size.
+        executor: "thread" or "process".
+
+    Returns:
+        Dict symbol -> Dict window -> metrics.
+    """
+    # Delegate to main function with empty dummy
+    dummy = pd.Series(dtype=float)
+    return compute_all_coins_metrics(
+        btc_returns=dummy,
+        alt_returns_map=aligned_returns_map,  # type: ignore[arg-type]
+        windows=windows,
+        robust=robust,
+        min_data_points=min_data_points,
+        max_workers=max_workers,
+        executor=executor,
+    )

@@ -300,10 +300,22 @@ class TestClassifier:
         assert cat2 == CATEGORY_B
 
     def test_category_b_requires_nonsignificant(self):
-        cat = classify_single(r=0.1, beta=0.5, p_value=0.01,
+        # Default (flag false): Category B only checks |r|<low, decoupled from p-value
+        cat_default = classify_single(r=0.1, beta=0.5, p_value=0.01,
                               corr_threshold_high=0.7, corr_threshold_low=0.2,
                               beta_min=3.0, beta_max=5.0, alpha=0.05)
-        assert cat == CATEGORY_NEUTRAL, "Category B requires p >= alpha"
+        assert cat_default == CATEGORY_B, "Default Category B should be decoupled from p-value"
+        # Strict mode (flag true): requires p>=alpha
+        cat_strict = classify_single(r=0.1, beta=0.5, p_value=0.01,
+                              corr_threshold_high=0.7, corr_threshold_low=0.2,
+                              beta_min=3.0, beta_max=5.0, alpha=0.05,
+                              category_b_require_nonsignificant=True)
+        assert cat_strict == CATEGORY_NEUTRAL, "Category B strict requires p >= alpha"
+        cat_strict2 = classify_single(r=0.1, beta=0.5, p_value=0.3,
+                              corr_threshold_high=0.7, corr_threshold_low=0.2,
+                              beta_min=3.0, beta_max=5.0, alpha=0.05,
+                              category_b_require_nonsignificant=True)
+        assert cat_strict2 == CATEGORY_B
 
     def test_neutral(self):
         cat = classify_single(r=0.5, beta=1.5, p_value=0.01,

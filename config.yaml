@@ -58,6 +58,12 @@ thresholds:
   beta_min: 3.0                       # Category A: beta in [BETA_MIN, BETA_MAX]
   beta_max: 5.0
   alpha: 0.05                         # significance level for p-value
+  category_b_require_nonsignificant: false  # if true, Category B requires |r|<low AND p>=alpha; if false (default), only |r|<low
+
+# ── Performance ─────────────────────────────────────────────────────
+performance:
+  max_workers: 8                      # thread/process pool size for metrics
+  executor: "thread"                  # "thread" | "process"
 
 # ── Output ──────────────────────────────────────────────────────────
 output:
@@ -70,3 +76,4 @@ output:
 logging:
   level: "INFO"                       # DEBUG | INFO | WARNING | ERROR
   format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  file: "output/run.log"              # optional file handler; empty/null to disable
